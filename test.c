@@ -14,6 +14,7 @@ int read_in(int socket, char *buf, int len);
 void bind_to_port(int socket,int port);
 int say(int socket,char* s);
 void handle_shutdown(int sig);
+int catch_signal(int sig,void (*handler)(int));
 int listener_d;
 
 int main(int argc,char *argv[])
@@ -21,31 +22,35 @@ int main(int argc,char *argv[])
     char *word="Internet Knock Protocol Server\r\nVersion 1.0\r\nKnock!Knock!\r\n";
     if(catch_signal(SIGINT,handle_shutdown)==-1)
     error("Can't set the interrupt handle");
-    listener_d=open_listener_socket;
+    listener_d=open_listener_socket();
     bind_to_port(listener_d,30000);
     if(listen(listener_d,10)==-1) error("Can't listen");
     struct sockaddr_storage client_addr;
+    unsigned int adress_size=sizeof(client_addr);
     puts("Waiting for connection");
     char buf[255];
     while(1){
         int connect_d=accept(listener_d,(struct sockaddr *)&client_addr,&adress_size);
         if(connect_d==-1) error("Can't open secondary socket");
-        if(say(connect_d,word)!=-1){
-            read_in(connect_d,buf,sizeof(buf));
-            if(strncasecmp("Who's there?",buf,12))
-                say(connect_d,"You should say 'who's there?'!");
-            else{
-                if(say(connect_d),"Oscar\r\n"!=-1){
-                    read_in(connect_d,buf,sizeof(buf));
-                    if(strncasecmp(connect_d,"Oscar who?",buf,10))
+        if(!fork()){
+            close(listener_d);
+            if(say(connect_d,word)!=-1){
+                read_in(connect_d,buf,sizeof(buf));
+                if(strncasecmp("Who's there?",buf,12))
+                    say(connect_d,"You should say 'who's there?'!");
+                else{
+                    if(say(connect_d,"Oscar\r\n")!=-1){
+                        read_in(connect_d,buf,sizeof(buf));
+                    if(strncasecmp("Oscar who?",buf,10))
                         say(connect_d,"You should say 'Oscar who?'!");
                     else
                         say(connect_d,"Oscar silly question,you get a silly answer\r\n");
-                    
                 }
             }
         }
         close(connect_d);
+        exit(0);
+        }
     }
     return 0;
 }
@@ -106,6 +111,15 @@ void handle_shutdown(int sig)
     if(listener_d)
         close(listener_d);
     
-    fprint(stderr,"Bye!\n");
+    fprintf(stderr,"Bye!\n");
     exit(0);
+}
+
+int catch_signal(int sig,void (*handler)(int))
+{
+    struct sigaction action;
+    action.sa_handler=handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags=0;
+    return sigaction(sig,&action,NULL);
 }
